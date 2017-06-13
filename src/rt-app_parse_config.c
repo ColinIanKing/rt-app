@@ -717,6 +717,8 @@ parse_thread_phase_data(struct json_object *obj,
 		}
 	}
 	parse_cpuset_data(obj, &data->cpu_data);
+	data->sched_prio = get_int_value_from(obj, "priority", TRUE, -1);
+
 }
 
 static void
@@ -760,6 +762,7 @@ parse_thread_data(char *name, struct json_object *obj, int index,
 
 	data->sched_prio = get_int_value_from(obj, "priority", TRUE,
 				 prior_def);
+	data->current_prio = -1;
 
 	/* deadline params */
 	data->runtime = get_int_value_from(obj, "dl-runtime", TRUE, 0) * 1000;

@@ -151,6 +151,7 @@ typedef struct _phase_data_t {
 	int loop;
 	event_data_t *events;
 	int nbevents;
+	int sched_prio;
 	cpuset_data_t cpu_data;
 } phase_data_t;
 
@@ -176,6 +177,7 @@ typedef struct _thread_data_t {
 	policy_t sched_policy;
 	char sched_policy_descr[RTAPP_POLICY_DESCR_LENGTH];
 	int sched_prio;
+	int current_prio;
 
 	unsigned long delay;
 

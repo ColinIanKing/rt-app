@@ -590,42 +590,26 @@ static void set_thread_affinity(thread_data_t *data, cpuset_data_t *cpu_data)
 	}
 }
 
-void *thread_body(void *arg)
+static void set_thread_priority(thread_data_t *data, int sched_prio)
 {
-	thread_data_t *data = (thread_data_t*) arg;
-	phase_data_t *pdata;
-	log_data_t ldata;
 	struct sched_param param;
-	struct timespec t_start, t_end, t_first;
-	unsigned long t_start_usec;
-	long slack;
-	timing_point_t *curr_timing;
-	timing_point_t *timings;
-	timing_point_t tmp_timing;
-	unsigned int timings_size, timing_loop;
-	pid_t tid;
 	struct sched_attr attr;
-	unsigned int flags = 0;
-	int ret, phase, phase_loop, thread_loop, log_idx;
+	pid_t tid;
+	int ret;
 
-	/* Set thread name */
-	ret = pthread_setname_np(pthread_self(), data->name);
-	if (ret !=  0) {
-		perror("pthread_setname_np thread name over 16 characters");
-	}
+	if (sched_prio == -1)
+		return;
 
-	/* Get the 1st phase's data */
-	pdata = &data->phases[0];
+	if (data->current_prio == sched_prio)
+		return;
 
-	/* Set scheduling policy and print pretty info on stdout */
-	log_notice("[%d] Using %s policy with priority %d", data->ind, data->sched_policy_descr, data->sched_prio);
 	switch (data->sched_policy)
 	{
 		case rr:
 		case fifo:
 			fprintf(data->log_handler, "# Policy : %s priority : %d\n",
 					(data->sched_policy == rr ? "SCHED_RR" : "SCHED_FIFO"), data->sched_prio);
-			param.sched_priority = data->sched_prio;
+			param.sched_priority = sched_prio;
 			ret = pthread_setschedparam(pthread_self(),
 					data->sched_policy,
 					&param);
@@ -639,17 +623,17 @@ void *thread_body(void *arg)
 		case other:
 			fprintf(data->log_handler, "# Policy : SCHED_OTHER priority : %d\n", data->sched_prio);
 
-			if (data->sched_prio > 19 || data->sched_prio < -20) {
+			if (sched_prio > 19 || sched_prio < -20) {
 				log_critical("[%d] setpriority "
 					"%d nice invalid. "
 					"Valid between -20 and 19",
-					data->ind, data->sched_prio);
+					data->ind, sched_prio);
 				exit(EXIT_FAILURE);
 			}
 
-			if (data->sched_prio) {
+			if (sched_prio) {
 				ret = setpriority(PRIO_PROCESS, 0,
-						data->sched_prio);
+						sched_prio);
 				if (ret != 0) {
 					log_critical("[%d] setpriority"
 					     "returned %d", data->ind, ret);
@@ -685,6 +669,40 @@ void *thread_body(void *arg)
 
 			exit(EXIT_FAILURE);
 	}
+
+	data->current_prio = sched_prio;
+}
+
+void *thread_body(void *arg)
+{
+	thread_data_t *data = (thread_data_t*) arg;
+	phase_data_t *pdata;
+	log_data_t ldata;
+	struct sched_param param;
+	struct timespec t_start, t_end, t_first;
+	unsigned long t_start_usec;
+	long slack;
+	timing_point_t *curr_timing;
+	timing_point_t *timings;
+	timing_point_t tmp_timing;
+	unsigned int timings_size, timing_loop;
+	pid_t tid;
+	struct sched_attr attr;
+	unsigned int flags = 0;
+	int ret, phase, phase_loop, thread_loop, log_idx;
+
+	/* Set thread name */
+	ret = pthread_setname_np(pthread_self(), data->name);
+	if (ret !=  0) {
+		perror("pthread_setname_np thread name over 16 characters");
+	}
+
+	/* Get the 1st phase's data */
+	pdata = &data->phases[0];
+
+	/* Set scheduling policy and print pretty info on stdout */
+	log_notice("[%d] Using %s policy with priority %d", data->ind, data->sched_policy_descr, data->sched_prio);
+	set_thread_priority(data, data->sched_prio);
 
 	if (opts.logsize > 0) {
 		timings = malloc(opts.logsize);
@@ -774,6 +792,7 @@ void *thread_body(void *arg)
 		struct timespec t_diff, t_rel_start;
 
 		set_thread_affinity(data, &pdata->cpu_data);
+		set_thread_priority(data, pdata->sched_prio);
 
 		if (opts.ftrace)
 			log_ftrace(ft_data.marker_fd,
